@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MaViSolution | Engineering High-Performance Platforms</title>
+  <link rel="icon" type="image/png" sizes="32x32"
+    href="https://i.postimg.cc/kgkTTnFH/Picsart_26_01_24_22_46_24_348.png" />
+  <link rel="shortcut icon" href="https://i.postimg.cc/kgkTTnFH/Picsart_26_01_24_22_46_24_348.png" />
+  <meta name="description"
+    content="A professional website for MaviSolution, providing next-generation Site Reliability Engineering, DevOps automation, and Cloud infrastructure management.">
+
+  <!-- Theme Initialization Script (Blocking to prevent flash) -->
+  <script>
+    (function () {
+      try {
+        const theme = localStorage.getItem('theme') || 'dark';
+        if (theme === 'dark') {
+          document.documentElement.classList.add('dark');
+        } else {
+          document.documentElement.classList.remove('dark');
+        }
+      } catch (e) { }
+    })();
+  </script>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            'void-navy': '#050B14',
+            'neon-green': '#42E695',
+            'tech-blue': '#2E7CF6',
+          }
+        }
+      }
+    }
+  </script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap"
+    rel="stylesheet">
+  <style>
+    :root {
+      --tech-blue-start: #2E7CF6;
+      --tech-blue-end: #00C6FF;
+      --neon-green-start: #42E695;
+      --neon-green-end: #3BB2B8;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      scroll-behavior: smooth;
+    }
+
+    /* Smooth background transitions */
+    html,
+    body {
+      transition: background-color 0.4s cubic-bezier(0.4, 0, 0.2, 1), color 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .text-gradient-blue {
+      background: linear-gradient(90deg, var(--tech-blue-start), var(--tech-blue-end));
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .text-gradient-green {
+      background: linear-gradient(90deg, var(--neon-green-start), var(--neon-green-end));
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .text-moving-gradient {
+      background: linear-gradient(to right,
+          #2E7CF6,
+          #42E695,
+          #00C6FF,
+          #3BB2B8,
+          #2E7CF6);
+      background-size: 200% auto;
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+      animation: gradient-move 8s linear infinite;
+    }
+
+    @keyframes gradient-move {
+      0% {
+        background-position: 0% center;
+      }
+
+      100% {
+        background-position: 200% center;
+      }
+    }
+
+    /* Glass Card Refinement */
+    .glass-card {
+      background: rgba(255, 255, 255, 0.8);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(0, 0, 0, 0.08);
+      box-shadow: 0 4px 30px rgba(0, 0, 0, 0.05);
+      transition: background 0.4s ease, border 0.4s ease, box-shadow 0.4s ease;
+    }
+
+    .dark .glass-card {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      box-shadow: none;
+    }
+
+    .font-mono-tech {
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .scanline {
+      width: 100%;
+      height: 100px;
+      z-index: 5;
+      background: linear-gradient(0deg, rgba(0, 0, 0, 0) 0%, rgba(255, 255, 255, 0.02) 50%, rgba(0, 0, 0, 0) 100%);
+      opacity: 0.1;
+      position: absolute;
+      bottom: 100%;
+      animation: scanline 8s linear infinite;
+    }
+
+    @keyframes scanline {
+      0% {
+        bottom: 100%;
+      }
+
+      100% {
+        bottom: -100px;
+      }
+    }
+  </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@19.0.0",
+    "react/": "https://esm.sh/react@19.0.0/",
+    "react-dom": "https://esm.sh/react-dom@19.0.0",
+    "react-dom/": "https://esm.sh/react-dom@19.0.0/",
+    "@google/genai": "https://esm.sh/@google/genai@1.38.0"
+  }
+}
+</script>
+  <link rel="stylesheet" href="/index.css">
+</head>
+
+<body class="bg-slate-50 text-slate-900 dark:bg-void-navy dark:text-slate-100 transition-colors duration-300">
+  <div id="root"></div>
+  <script type="module" src="index.tsx"></script>
+  <script type="module" src="/index.tsx"></script>
+</body>
+
+</html>
