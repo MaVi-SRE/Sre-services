@@ -58,7 +58,7 @@ export const ContactPage: React.FC = () => {
     e.preventDefault();
 
     try {
-      const response = await fetch('http://localhost:5000/api/service-request', {
+      const response = await fetch('https://sre-services.onrender.com/api/service-request', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
