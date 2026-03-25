@@ -87,6 +87,17 @@ export const ServicePortfolio: React.FC = () => {
         features: ['Fully Managed Security & WAF', 'Daily Automated Backups', 'Global Content Delivery Network (CDN)', 'Free SSL & Performance Optimization'],
         benefits: ['Peace of Mind Security', 'Improved SEO & Conversion Rates', 'Zero-Maintenance Infrastructure', 'Expert Technical Support']
       }
+    },
+    {
+      title: 'Offshore Development Center',
+      desc: 'Dedicated engineering teams that integrate seamlessly with your organization, providing scalable and cost-effective development power.',
+      icon: 'fa-building-user',
+      color: 'blue',
+      details: {
+        overview: 'Our Offshore Development Center (ODC) model provides you with a dedicated team of experts who work as an extension of your in-house engineering department. We handle the recruitment, infrastructure, and management while you maintain full control over the product roadmap.',
+        features: ['Dedicated Full-Stack Engineering Teams', 'Seamless Integration with In-House Workflows', 'Scalable Resource Allocation', 'End-to-End Project Management Support'],
+        benefits: ['Significant Reduction in Operational Costs', 'Access to Global Talent Pool', 'Faster Scaling of Development Capacity', 'Focus on Core Business Objectives']
+      }
     }
   ];
 

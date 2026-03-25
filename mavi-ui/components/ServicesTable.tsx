@@ -32,6 +32,13 @@ export const ServicesTable: React.FC = () => {
       details: 'Proactive incident management, observability dashboards, and on-call rotation.',
       stack: 'Kubernetes, Terraform, Ansible',
       icon: 'fa-microchip'
+    },
+    {
+      category: 'Offshore Development Center',
+      details: 'Dedicated engineering teams as an extension of your in-house department.',
+      stack: 'Full-Stack, Agile, DevOps, ODC',
+      icon: 'fa-building-user'
+
     }
   ];
 
@@ -55,14 +62,14 @@ export const ServicesTable: React.FC = () => {
               </thead>
               <tbody className="divide-y divide-slate-200 dark:divide-white/5">
                 {services.map((service, idx) => (
-                  <tr 
-                    key={idx} 
+                  <tr
+                    key={idx}
                     className="group hover:bg-slate-100/30 dark:hover:bg-white/[0.04] transition-all duration-300 relative"
                   >
                     <td className="px-8 py-10 relative">
                       {/* Left Border Glow Highlight */}
                       <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-gradient-to-b from-[#2E7CF6] to-[#42E695] opacity-0 group-hover:opacity-100 transition-opacity duration-300 shadow-[0_0_15px_rgba(46,124,246,0.5)]"></div>
-                      
+
                       <div className="flex items-center gap-4">
                         <div className="w-12 h-12 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-600 dark:text-blue-400 group-hover:bg-blue-600 group-hover:text-white group-hover:scale-110 group-hover:shadow-[0_0_20px_rgba(59,130,246,0.2)] transition-all duration-300 shrink-0">
                           <i className={`fa-solid ${service.icon} text-lg`}></i>
@@ -78,8 +85,8 @@ export const ServicesTable: React.FC = () => {
                     <td className="px-8 py-10">
                       <div className="flex flex-wrap gap-2">
                         {service.stack.split(',').map((tool, tIdx) => (
-                          <span 
-                            key={tIdx} 
+                          <span
+                            key={tIdx}
                             className="text-[9px] font-mono-tech font-bold text-green-600 dark:text-green-400 bg-green-500/10 px-3 py-1.5 rounded-lg border border-green-500/20 uppercase tracking-widest whitespace-nowrap group-hover:bg-green-500 group-hover:text-white dark:group-hover:text-slate-950 transition-all duration-300"
                           >
                             {tool.trim()}
