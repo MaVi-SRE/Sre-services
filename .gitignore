@@ -1,4 +1,10 @@
 node_modules
 .env
 .env.local
+.env.*.local
 secrets/
+
+# Credentials / internal notes — never commit
+Imp Doc.txt
+*.pem
+*.key

@@ -1,5 +1,5 @@
-import { div } from 'motion/react-client';
 import React, { useState } from 'react';
+import { apiUrl, SUPPORT_EMAIL } from '../config/api';
 
 
 
@@ -16,6 +16,7 @@ export const ContactPage: React.FC = () => {
 
   const [showPopup, setShowPopup] = useState(false);
   const [popupMessage, setPopupMessage] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [ripples, setRipples] = useState<{ x: number; y: number; id: number; size: number }[]>([]);
 
   const handleRipple = (e: React.MouseEvent<HTMLButtonElement>) => {
@@ -56,9 +57,12 @@ export const ContactPage: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
+
+    setIsSubmitting(true);
 
     try {
-      const response = await fetch('https://sre-services.onrender.com/api/service-request', {
+      const response = await fetch(apiUrl('/api/service-request'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
@@ -80,17 +84,25 @@ export const ContactPage: React.FC = () => {
           project_details: '',
         });
       } else {
-        setPopupMessage(
-          "Something went wrong. Please contact connect@mavisolution.com"
-        );
+        const data = await response.json().catch(() => null);
+
+        if (response.status === 400 && Array.isArray(data?.details)) {
+          setPopupMessage(`Please check your details: ${data.details.join(', ')}`);
+        } else if (response.status === 429) {
+          setPopupMessage(
+            `Too many submissions from this device. Please try again later or email ${SUPPORT_EMAIL}`
+          );
+        } else {
+          setPopupMessage(`Something went wrong. Please contact ${SUPPORT_EMAIL}`);
+        }
         setShowPopup(true);
       }
     } catch (error) {
       console.error(error);
-      setPopupMessage(
-        "Server error. Please contact connect@mavisolution.com"
-      );
+      setPopupMessage(`Server error. Please contact ${SUPPORT_EMAIL}`);
       setShowPopup(true);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -335,9 +347,12 @@ export const ContactPage: React.FC = () => {
                 <button
                   type="submit"
                   onMouseDown={handleRipple}
-                  className="relative overflow-hidden w-full py-6 bg-gradient-to-r from-blue-600 to-blue-400 text-white font-black rounded-2xl uppercase tracking-[0.2em] hover:scale-105 transition-all shadow-xl shadow-blue-500/20 mt-4"
+                  disabled={isSubmitting}
+                  className="relative overflow-hidden w-full py-6 bg-gradient-to-r from-blue-600 to-blue-400 text-white font-black rounded-2xl uppercase tracking-[0.2em] hover:scale-105 transition-all shadow-xl shadow-blue-500/20 mt-4 disabled:opacity-60 disabled:grayscale disabled:hover:scale-100 disabled:cursor-not-allowed"
                 >
-                  <span className="relative z-10">Initialize Connection</span>
+                  <span className="relative z-10">
+                    {isSubmitting ? 'Submitting…' : 'Initialize Connection'}
+                  </span>
                   {ripples.map((ripple) => (
                     <span
                       key={ripple.id}

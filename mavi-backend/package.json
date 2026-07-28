@@ -2,7 +2,12 @@
   "name": "monitronix-backend",
   "version": "1.0.0",
   "main": "index.js",
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
@@ -18,8 +23,6 @@
     "form-data": "^4.0.5",
     "googleapis": "^171.4.0",
     "mailgun.js": "^12.7.0",
-    "node-fetch": "^3.3.2",
-    "pg": "^8.18.0",
-    "react-toastify": "^11.0.5"
+    "pg": "^8.18.0"
   }
 }
