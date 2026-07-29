@@ -7,6 +7,15 @@ type Message = {
   isError?: boolean;
 };
 
+// Lead capture kicks in once the visitor is engaged (has sent this many turns).
+const LEAD_TRIGGER_AFTER_TURNS = 2;
+const LEAD_STORAGE_KEY = 'mavi_lead_captured';
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+const SKIP_RE = /^(skip|no thanks|no|later|not now|maybe later)$/i;
+
+// idle → name → email → company → done
+type LeadStage = 'idle' | 'name' | 'email' | 'company' | 'done';
+
 /**
  * Local fast-path answers. Anything that does not match here is forwarded to
  * the AI backend at /api/chat, so this only needs to cover the obvious asks.
@@ -101,9 +110,22 @@ export const Chatbot: React.FC = () => {
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [lastFailedMessage, setLastFailedMessage] = useState<string | null>(null);
+  const [leadStage, setLeadStage] = useState<LeadStage>('idle');
   const scrollRef = useRef<HTMLDivElement>(null);
   const timeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const abortRef = useRef<AbortController | null>(null);
+  const userTurnsRef = useRef(0);
+  // The first substantive question the visitor asked — stored with the lead.
+  const leadRef = useRef({ name: '', email: '', company: '', message: '' });
+
+  // Don't ask again if we already captured this visitor in a previous session.
+  useEffect(() => {
+    try {
+      if (localStorage.getItem(LEAD_STORAGE_KEY) === '1') setLeadStage('done');
+    } catch {
+      /* localStorage may be unavailable (private mode) — just proceed. */
+    }
+  }, []);
 
   const [suggestedPrompts, setSuggestedPrompts] = useState([
     'What does MaVi SRE do?',
@@ -133,11 +155,102 @@ export const Chatbot: React.FC = () => {
   }, []);
 
   const replyLocally = useCallback(
-    (text: string) => {
-      const timer = setTimeout(() => pushBotMessage(text), 600);
+    (text: string, delay = 600) => {
+      const timer = setTimeout(() => pushBotMessage(text), delay);
       timeoutsRef.current.push(timer);
     },
     [pushBotMessage]
+  );
+
+  // Begin the name → email → company capture, after the answer has landed.
+  const maybeStartLeadCapture = useCallback(
+    (delay: number) => {
+      if (leadStage !== 'idle') return;
+      if (userTurnsRef.current < LEAD_TRIGGER_AFTER_TURNS) return;
+      setLeadStage('name');
+      replyLocally(
+        "By the way — so our SRE team can follow up with the right details, may I grab your name? (or type ‘skip’)",
+        delay
+      );
+    },
+    [leadStage, replyLocally]
+  );
+
+  const finishCapture = useCallback((persist: boolean) => {
+    setLeadStage('done');
+    if (persist) {
+      try {
+        localStorage.setItem(LEAD_STORAGE_KEY, '1');
+      } catch {
+        /* ignore */
+      }
+    }
+  }, []);
+
+  const submitLead = useCallback(async () => {
+    setIsTyping(true);
+    try {
+      const response = await fetch(apiUrl('/api/chat-lead'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(leadRef.current),
+      });
+
+      if (!response.ok) throw new Error(`Save failed with status ${response.status}`);
+
+      const firstName = leadRef.current.name.split(' ')[0];
+      finishCapture(true);
+      pushBotMessage(
+        `Thanks, ${firstName}! I've shared your details with our team — we'll reach out to ${leadRef.current.company || 'you'} shortly. Meanwhile, ask me anything about SRE, cloud, or reliability.`
+      );
+    } catch (error) {
+      console.error('Lead save failed:', error);
+      // Don't trap the visitor in the flow if saving fails.
+      finishCapture(false);
+      pushBotMessage(
+        `Thanks! I couldn't log that just now, but you can reach us directly at ${SUPPORT_EMAIL}. Feel free to keep asking questions.`,
+        true
+      );
+    }
+  }, [finishCapture, pushBotMessage]);
+
+  // Route a message to the active capture step instead of the chat backend.
+  const handleLeadAnswer = useCallback(
+    (answer: string) => {
+      const text = answer.trim();
+
+      if (SKIP_RE.test(text)) {
+        finishCapture(false);
+        replyLocally(
+          `No problem — ask me anything, or reach us anytime at ${SUPPORT_EMAIL}.`
+        );
+        return;
+      }
+
+      if (leadStage === 'name') {
+        leadRef.current.name = text.slice(0, 100);
+        setLeadStage('email');
+        replyLocally(`Thanks, ${text.split(' ')[0]}! What's the best email to reach you?`);
+        return;
+      }
+
+      if (leadStage === 'email') {
+        if (!EMAIL_RE.test(text)) {
+          replyLocally("That doesn't look like a valid email — could you re-enter it?");
+          return;
+        }
+        leadRef.current.email = text;
+        setLeadStage('company');
+        replyLocally('Great. And which company are you with?');
+        return;
+      }
+
+      if (leadStage === 'company') {
+        leadRef.current.company = text.slice(0, 150);
+        submitLead();
+      }
+    },
+    [leadStage, finishCapture, replyLocally, submitLead]
   );
 
   const handleSend = useCallback(
@@ -150,10 +263,22 @@ export const Chatbot: React.FC = () => {
       setIsTyping(true);
       setLastFailedMessage(null);
 
+      // If we're mid-capture, treat this message as the answer, not a query.
+      if (leadStage === 'name' || leadStage === 'email' || leadStage === 'company') {
+        handleLeadAnswer(textToSend);
+        return;
+      }
+
+      userTurnsRef.current += 1;
+      // Remember the visitor's first real question to store alongside the lead.
+      if (!leadRef.current.message) leadRef.current.message = textToSend.slice(0, 2000);
+
       // 1. Instant local answer for the common questions.
       const localAnswer = findLocalAnswer(textToSend);
       if (localAnswer) {
         replyLocally(localAnswer);
+        // Ask for details after the answer has been shown.
+        maybeStartLeadCapture(1600);
         return;
       }
 
@@ -193,6 +318,8 @@ export const Chatbot: React.FC = () => {
         if (!data?.reply) throw new Error('Empty response from server');
 
         pushBotMessage(data.reply);
+        // Ask for details after the answer has been shown.
+        maybeStartLeadCapture(900);
       } catch (error) {
         const aborted = error instanceof DOMException && error.name === 'AbortError';
         console.error('Chat request failed:', error);
@@ -208,7 +335,7 @@ export const Chatbot: React.FC = () => {
         if (abortRef.current === controller) abortRef.current = null;
       }
     },
-    [input, isTyping, messages, pushBotMessage, replyLocally]
+    [input, isTyping, messages, leadStage, handleLeadAnswer, maybeStartLeadCapture, pushBotMessage, replyLocally]
   );
 
   const handleRetry = useCallback(() => {
@@ -310,7 +437,7 @@ export const Chatbot: React.FC = () => {
           )}
 
           {/* Suggested Prompts */}
-          {suggestedPrompts.length > 0 && !isTyping && (
+          {suggestedPrompts.length > 0 && !isTyping && leadStage !== 'name' && leadStage !== 'email' && leadStage !== 'company' && (
             <div className="px-5 pb-4 flex flex-wrap gap-2">
               {suggestedPrompts.map((prompt, idx) => (
                 <button
@@ -336,8 +463,17 @@ export const Chatbot: React.FC = () => {
                 maxLength={1000}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                placeholder="Ask our SRE expert..."
+                placeholder={
+                  leadStage === 'name'
+                    ? 'Type your name...'
+                    : leadStage === 'email'
+                      ? 'Type your email...'
+                      : leadStage === 'company'
+                        ? 'Type your company...'
+                        : 'Ask our SRE expert...'
+                }
                 aria-label="Message"
+                inputMode={leadStage === 'email' ? 'email' : 'text'}
                 className="flex-grow bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-3 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
               />
               <button

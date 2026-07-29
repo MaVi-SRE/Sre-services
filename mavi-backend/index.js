@@ -107,6 +107,15 @@ const formLimiter = rateLimit({
     message: { error: "Too many submissions. Please try again later." },
 });
 
+// Chat lead capture: one per conversation normally, so keep it modest.
+const leadLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: "Too many submissions. Please try again later." },
+});
+
 // -------------------------
 // HELPERS
 // -------------------------
@@ -139,6 +148,20 @@ function validateServiceRequest(body) {
         errors.push("preferred_time is too long");
     if (body.project_details && String(body.project_details).length > 5000)
         errors.push("project_details must be under 5000 characters");
+
+    return errors;
+}
+
+function validateChatLead(body) {
+    const errors = [];
+
+    if (!isNonEmptyString(body.name, 100)) errors.push("name is required (max 100 chars)");
+    if (typeof body.email !== "string" || !EMAIL_RE.test(body.email.trim()))
+        errors.push("A valid email is required");
+    if (body.company && String(body.company).length > 150)
+        errors.push("company must be under 150 characters");
+    if (body.message && String(body.message).length > 2000)
+        errors.push("message must be under 2000 characters");
 
     return errors;
 }
@@ -205,6 +228,26 @@ const pool = new Pool({
 pool.query("SELECT NOW()")
     .then((res) => console.log("Database connected at:", res.rows[0]))
     .catch((err) => console.error("Database connection error:", err));
+
+// Ensure the chatbot lead table exists (created on boot, idempotent).
+async function ensureSchema() {
+    try {
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS chat_leads (
+                id          SERIAL PRIMARY KEY,
+                name        TEXT NOT NULL,
+                email       TEXT NOT NULL,
+                company     TEXT,
+                message     TEXT,
+                created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        `);
+        console.log("✅ chat_leads table is ready");
+    } catch (err) {
+        console.error("⚠️  Could not ensure chat_leads table:", err.message);
+    }
+}
+ensureSchema();
 
 // -------------------------
 // BASIC ROUTES
@@ -401,6 +444,60 @@ app.post("/api/service-request", formLimiter, async (req, res) => {
         message: "Service request submitted successfully",
         data: saved,
     });
+});
+
+// -------------------------
+// CHAT LEAD ROUTE
+// Captures name / email / company collected inside the chat widget.
+// -------------------------
+app.post("/api/chat-lead", leadLimiter, async (req, res) => {
+    const validationErrors = validateChatLead(req.body || {});
+    if (validationErrors.length > 0) {
+        return res.status(400).json({ error: "Invalid submission", details: validationErrors });
+    }
+
+    const name = req.body.name.trim();
+    const email = req.body.email.trim();
+    const company = (req.body.company || "").trim() || null;
+    const message = (req.body.message || "").trim() || null;
+
+    let saved;
+
+    // The insert is the only thing that can fail the request.
+    try {
+        const result = await pool.query(
+            `INSERT INTO chat_leads (name, email, company, message)
+             VALUES ($1, $2, $3, $4)
+             RETURNING id, created_at`,
+            [name, email, company, message]
+        );
+        saved = result.rows[0];
+        console.log("✅ Chat lead saved:", saved.id);
+    } catch (error) {
+        console.error("❌ Chat lead insert failed:", error);
+        return res.status(500).json({ error: "Server error" });
+    }
+
+    // Best-effort admin notification; never fails the request.
+    if (process.env.ADMIN_EMAIL) {
+        sendMail({
+            from: `${BRAND} Assistant <postmaster@${process.env.MAILGUN_DOMAIN}>`,
+            to: process.env.ADMIN_EMAIL,
+            replyTo: email,
+            subject: "💬 New chat lead from the SRE Assistant",
+            html: `
+                <h2 style="color:#2563eb;">New Chat Lead</h2>
+                <p><strong>Name:</strong> ${escapeHtml(name)}</p>
+                <p><strong>Email:</strong> ${escapeHtml(email)}</p>
+                <p><strong>Company:</strong> ${escapeHtml(company || "Not provided")}</p>
+                <p><strong>Message:</strong> ${escapeHtml(message || "Not provided")}</p>
+                <hr/>
+                <p style="font-size:12px;color:gray;">Captured by the ${BRAND} SRE Assistant</p>
+            `,
+        }).catch((err) => console.error("⚠️  Chat lead admin email failed:", err.message));
+    }
+
+    res.status(201).json({ message: "Lead saved", id: saved.id });
 });
 
 // -------------------------
