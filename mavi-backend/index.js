@@ -563,7 +563,11 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
             config: {
                 systemInstruction: SYSTEM_PROMPT,
                 temperature: 0.4,
-                maxOutputTokens: 400,
+                maxOutputTokens: 512,
+                // gemini-2.5-* are "thinking" models: left on, they can spend the
+                // whole output budget on internal reasoning and return no text.
+                // We want short, direct answers, so disable thinking.
+                thinkingConfig: { thinkingBudget: 0 },
             },
             contents: [
                 ...toGeminiHistory(history),
@@ -574,12 +578,20 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
         const reply = response.text?.trim();
 
         if (!reply) {
-            throw new Error("Gemini returned an empty response");
+            // Log why the model returned nothing (safety block, MAX_TOKENS, etc.)
+            // so this is diagnosable from the server logs.
+            const finishReason = response.candidates?.[0]?.finishReason;
+            console.error("Chat Error: empty Gemini response. finishReason:", finishReason);
+            // Don't dead-end the visitor with a 500 — hand back a usable reply so
+            // the conversation (and lead capture) can continue.
+            return res.json({
+                reply: `I couldn't generate a full answer to that one. Could you rephrase, or reach our team at ${SUPPORT_EMAIL}?`,
+            });
         }
 
         res.json({ reply });
     } catch (error) {
-        console.error("Chat Error:", error);
+        console.error("Chat Error:", error?.message || error);
         res.status(500).json({
             reply: `I apologize, I am experiencing a temporary issue. Please contact us at ${SUPPORT_EMAIL}.`,
         });
