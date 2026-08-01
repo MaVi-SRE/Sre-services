@@ -592,9 +592,15 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
         res.json({ reply });
     } catch (error) {
         console.error("Chat Error:", error?.message || error);
-        res.status(500).json({
+        const body = {
             reply: `I apologize, I am experiencing a temporary issue. Please contact us at ${SUPPORT_EMAIL}.`,
-        });
+        };
+        // Set DEBUG_CHAT=1 in the environment to surface the real cause via the
+        // API response (handy for diagnosing; turn it off afterwards).
+        if (process.env.DEBUG_CHAT === "1") {
+            body.debug = { model: GEMINI_MODEL, message: error?.message || String(error) };
+        }
+        res.status(500).json(body);
     }
 });
 

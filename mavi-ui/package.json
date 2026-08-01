@@ -3,14 +3,21 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview"
   },
   "dependencies": {
+    "@google/genai": "^1.41.0",
+    "form-data": "^4.0.5",
     "lucide-react": "^0.475.0",
+    "mailgun.js": "^12.7.0",
     "motion": "^12.4.7",
+    "pg": "^8.18.0",
     "react": "19.0.0",
     "react-datepicker": "^9.1.0",
     "react-dom": "19.0.0",
