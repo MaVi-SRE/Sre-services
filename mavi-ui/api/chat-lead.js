@@ -31,7 +31,9 @@ export default async function handler(req, res) {
     console.log('✅ Chat lead saved:', saved.id);
   } catch (error) {
     console.error('❌ Chat lead insert failed:', error?.message || error);
-    return res.status(500).json({ error: 'Server error' });
+    const out = { error: 'Server error' };
+    if (process.env.DEBUG_CHAT === '1') out.debug = error?.message || String(error);
+    return res.status(500).json(out);
   }
 
   // Best-effort admin notification; never fails the request.
