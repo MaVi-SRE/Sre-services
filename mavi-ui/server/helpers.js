@@ -4,7 +4,9 @@
 
 export const SUPPORT_EMAIL = 'support@mavisolution.com';
 export const BRAND = 'MaVi';
-export const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+// A rolling alias that tracks a current Flash model, so it doesn't get retired
+// out from under us like a pinned version does. Override with GEMINI_MODEL.
+export const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-flash-latest';
 
 export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
