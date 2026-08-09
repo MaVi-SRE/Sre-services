@@ -1,5 +1,11 @@
 // POST /api/chat — Vercel serverless function.
-// Runs server-side: the Gemini key stays private.
+//
+// The bot works entirely on built-in answers (the FAQ here + the richer
+// knowledge base in the widget). Gemini is an OPTIONAL enhancement for
+// open-ended questions and is OFF by default — set ENABLE_AI=1 (plus a valid
+// GEMINI_API_KEY / GEMINI_MODEL) to turn it on. If the AI is off or fails for
+// any reason, we return a graceful built-in reply — never a 500 — so the
+// widget always works.
 import { GoogleGenAI } from '@google/genai';
 import {
   readBody,
@@ -12,10 +18,15 @@ import {
 
 let aiClient = null;
 function getAI() {
+  if (process.env.ENABLE_AI !== '1') return null; // opt-in
   if (!process.env.GEMINI_API_KEY) return null;
   if (!aiClient) aiClient = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
   return aiClient;
 }
+
+// Built-in reply for anything not covered by the FAQ. Nudges toward capture.
+const fallbackReply = () =>
+  `Great question! Our SRE team can give you a precise answer on that. Share a few details and I'll have them follow up — or email us anytime at ${SUPPORT_EMAIL}.`;
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -34,7 +45,7 @@ export default async function handler(req, res) {
   const trimmed = message.trim();
   const lowerMessage = trimmed.toLowerCase();
 
-  // FAQ fast-path — no model call.
+  // 1. FAQ fast-path — no model call.
   const matchedFAQ = faq.find((item) =>
     item.keywords.some((keyword) => lowerMessage.includes(keyword))
   );
@@ -42,14 +53,13 @@ export default async function handler(req, res) {
     return res.json({ reply: matchedFAQ.answer });
   }
 
+  // 2. Optional AI. If it's off, answer from built-ins immediately.
   const ai = getAI();
   if (!ai) {
-    console.error('Chat Error: GEMINI_API_KEY is not configured');
-    return res.status(503).json({
-      reply: `I'm not able to answer that right now. Please contact us at ${SUPPORT_EMAIL}.`,
-    });
+    return res.json({ reply: fallbackReply() });
   }
 
+  // 3. Best-effort AI — any failure degrades to the built-in reply (still 200).
   try {
     const response = await ai.models.generateContent({
       model: GEMINI_MODEL,
@@ -68,24 +78,22 @@ export default async function handler(req, res) {
     });
 
     const reply = response.text?.trim();
-
     if (!reply) {
-      const finishReason = response.candidates?.[0]?.finishReason;
-      console.error('Chat Error: empty Gemini response. finishReason:', finishReason);
-      return res.json({
-        reply: `I couldn't generate a full answer to that one. Could you rephrase, or reach our team at ${SUPPORT_EMAIL}?`,
-      });
+      console.error(
+        'Chat: empty Gemini response. finishReason:',
+        response.candidates?.[0]?.finishReason
+      );
+      return res.json({ reply: fallbackReply() });
     }
 
     res.json({ reply });
   } catch (error) {
-    console.error('Chat Error:', error?.message || error);
-    const body = {
-      reply: `I apologize, I am experiencing a temporary issue. Please contact us at ${SUPPORT_EMAIL}.`,
-    };
+    // Log for diagnostics, but the visitor still gets a usable answer.
+    console.error('Chat AI error (using fallback):', error?.message || error);
+    const body = { reply: fallbackReply() };
     if (process.env.DEBUG_CHAT === '1') {
       body.debug = { model: GEMINI_MODEL, message: error?.message || String(error) };
     }
-    res.status(500).json(body);
+    res.json(body);
   }
 }

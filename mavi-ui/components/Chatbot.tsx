@@ -117,6 +117,9 @@ export const Chatbot: React.FC = () => {
   const userTurnsRef = useRef(0);
   // The first substantive question the visitor asked — stored with the lead.
   const leadRef = useRef({ name: '', email: '', company: '', message: '' });
+  // Latest messages, readable inside callbacks without re-creating them.
+  const messagesRef = useRef(messages);
+  messagesRef.current = messages;
 
   // Don't ask again if we already captured this visitor in a previous session.
   useEffect(() => {
@@ -190,10 +193,12 @@ export const Chatbot: React.FC = () => {
   const submitLead = useCallback(async () => {
     setIsTyping(true);
     try {
+      // Include the conversation so the team sees the full context of the lead.
+      const transcript = messagesRef.current.map((m) => ({ role: m.role, text: m.text }));
       const response = await fetch(apiUrl('/api/chat-lead'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(leadRef.current),
+        body: JSON.stringify({ ...leadRef.current, transcript }),
       });
 
       if (!response.ok) throw new Error(`Save failed with status ${response.status}`);
