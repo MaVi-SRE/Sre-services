@@ -24,9 +24,16 @@ function getAI() {
   return aiClient;
 }
 
-// Built-in reply for anything not covered by the FAQ. Nudges toward capture.
-const fallbackReply = () =>
-  `Great question! Our SRE team can give you a precise answer on that. Share a few details and I'll have them follow up — or email us anytime at ${SUPPORT_EMAIL}.`;
+// Built-in replies for anything not covered by the FAQ. Rotated so repeated
+// off-topic questions don't return the exact same line, and each nudges the
+// visitor toward a real topic or toward sharing their details.
+const FALLBACKS = [
+  `I can help with our SRE services, cloud audits, uptime & monitoring, multi-cloud, security, and pricing — just ask about any of those. Prefer a human? Say "contact me" and I'll take your details.`,
+  `Good question — our SRE team can dig into the specifics. Try asking about our services, a cloud audit, how we reach 99.99% uptime, or pricing. Or say "share my details" and we'll follow up.`,
+  `Happy to help! I can cover monitoring, incident response, migrations, CI/CD, and data residency. Want a person to reach out? Just say "contact me" or email ${SUPPORT_EMAIL}.`,
+];
+
+const fallbackReply = () => FALLBACKS[Math.floor(Math.random() * FALLBACKS.length)];
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
