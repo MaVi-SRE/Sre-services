@@ -32,7 +32,9 @@ export default async function handler(req, res) {
   } catch (error) {
     console.error('❌ Chat lead insert failed:', error?.message || error);
     const out = { error: 'Server error' };
-    if (process.env.DEBUG_CHAT === '1') out.debug = error?.message || String(error);
+    if (process.env.DEBUG_CHAT === '1' || req.headers['x-mavi-debug'] === 'mavi2026') {
+      out.debug = error?.message || String(error);
+    }
     return res.status(500).json(out);
   }
 
