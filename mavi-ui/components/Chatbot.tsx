@@ -29,15 +29,24 @@ const knowledgeBase: { patterns: string[][]; answer: string }[] = [
     patterns: [
       ['what', 'mavi', 'do'],
       ['what do you do'],
-      ['your services'],
-      ['services you offer'],
       ['about mavi'],
     ],
     answer:
       'We provide "Maxi Vision" for your infrastructure. We automate scaling, monitoring, and incident response to ensure 99.99% uptime for startups in India and the UAE.',
   },
   {
-    patterns: [['outage'], ['incident'], ['downtime'], ['mttr']],
+    patterns: [
+      ['services'],
+      ['your services'],
+      ['services you offer'],
+      ['offerings'],
+      ['what can you help'],
+    ],
+    answer:
+      'Our core services: SRE-as-a-Service, 24/7 monitoring & incident response, cloud reliability & cost audits, CI/CD and Infrastructure-as-Code automation, and production L1 support.',
+  },
+  {
+    patterns: [['outage'], ['incident'], ['downtime'], ['mttr'], ['on call'], ['on-call'], ['pager']],
     answer:
       'Our agents use AIOps to detect anomalies in real-time. We reduce MTTR (Mean Time To Recovery) by automating self-healing protocols before a human even needs to wake up.',
   },
@@ -62,18 +71,69 @@ const knowledgeBase: { patterns: string[][]; answer: string }[] = [
       'Yes. We specialize in AWS, Azure, and Vercel deployments ensuring resilience across providers and geographic regions.',
   },
   {
-    patterns: [['uptime'], ['99.99'], ['sla'], ['error budget']],
+    patterns: [['uptime'], ['99.99'], ['sla'], ['error budget'], ['reliability']],
     answer:
-      'We implement Error Budgets and AIOps. If your system drifts from its healthy state, MaVi agents trigger self-healing protocols.',
+      'We hit 99.99% uptime with proactive monitoring, redundancy, Error Budgets, and AIOps — if your system drifts from a healthy state, MaVi agents trigger self-healing protocols.',
   },
   {
-    patterns: [['contact'], ['talk to', 'human'], ['sales'], ['reach you'], ['support']],
+    patterns: [['monitoring'], ['observability'], ['alerting'], ['prometheus'], ['grafana'], ['dashboard']],
+    answer:
+      'We set up full-stack observability — metrics, logs, traces, and alerting with tools like Prometheus, Grafana, Datadog, and CloudWatch — so issues surface before your users notice.',
+  },
+  {
+    patterns: [['security'], ['compliance'], ['soc 2'], ['soc2'], ['iso 27001']],
+    answer:
+      'We harden infrastructure with least-privilege IAM, secrets management, encrypted networking, and audit trails, aligning with SOC 2 and ISO 27001 practices.',
+  },
+  {
+    patterns: [['migrate'], ['migration'], ['move to'], ['re-platform']],
+    answer:
+      'We plan and run near-zero-downtime migrations to and across AWS, Azure, and Vercel, with rollback safety and cost optimization built in.',
+  },
+  {
+    patterns: [['tech stack'], ['technology'], ['tooling'], ['kubernetes'], ['terraform'], ['docker']],
+    answer:
+      'Our toolkit: Kubernetes, Docker, Terraform, GitHub Actions/GitLab CI, Prometheus, and Grafana across AWS, Azure, GCP, and Vercel.',
+  },
+  {
+    patterns: [['pipeline'], ['ci cd'], ['cicd'], ['devops'], ['deployment automation'], ['iac']],
+    answer:
+      'We build reliable CI/CD pipelines and Infrastructure-as-Code so deployments are repeatable, fast, and safe to roll back.',
+  },
+  {
+    patterns: [['data residency'], ['residency'], ['gdpr'], ['data protection']],
+    answer:
+      'We support data residency in India and the UAE, and design for regional failover across providers to meet your compliance needs.',
+  },
+  {
+    patterns: [['get started'], ['getting started'], ['onboard'], ['how do we start'], ['begin']],
+    answer:
+      'Getting started is easy — we begin with a System Health Check of your setup, then propose a reliability roadmap. Share your details and our team will set it up.',
+  },
+  {
+    patterns: [['contact'], ['talk to', 'human'], ['sales'], ['reach you'], ['support'], ['email']],
     answer: `Happy to help. You can reach our team at ${SUPPORT_EMAIL}, or use the Contact page to book a slot at your preferred time.`,
   },
   {
-    patterns: [['pricing'], ['cost'], ['how much'], ['quote'], ['price']],
-    answer: `Pricing depends on your stack size, environments, and on-call coverage. Share a few details at ${SUPPORT_EMAIL} and we'll send a scoped quote within 4 business hours.`,
+    patterns: [['pricing'], ['cost'], ['how much'], ['quote'], ['price'], ['budget']],
+    answer: `Pricing depends on your stack size, environments, and on-call coverage. Share a few details and we'll send a scoped quote within 4 business hours.`,
   },
+];
+
+// Phrases that mean "I want to share my details / be contacted" — these start
+// the lead capture flow immediately rather than returning a generic answer.
+const CAPTURE_INTENT: string[][] = [
+  ['share', 'detail'],
+  ['my details'],
+  ['contact me'],
+  ['reach out to me'],
+  ['call me'],
+  ['get in touch'],
+  ['connect me'],
+  ['email me'],
+  ['follow up with me'],
+  ['interested'],
+  ['sign me up'],
 ];
 
 const normalize = (text: string) =>
@@ -97,6 +157,11 @@ const findLocalAnswer = (message: string): string | null => {
   }
 
   return best?.answer ?? null;
+};
+
+const wantsLeadCapture = (message: string): boolean => {
+  const text = normalize(message);
+  return CAPTURE_INTENT.some((group) => group.every((term) => text.includes(term)));
 };
 
 export const Chatbot: React.FC = () => {
@@ -277,6 +342,19 @@ export const Chatbot: React.FC = () => {
       userTurnsRef.current += 1;
       // Remember the visitor's first real question to store alongside the lead.
       if (!leadRef.current.message) leadRef.current.message = textToSend.slice(0, 2000);
+
+      // 0. Visitor explicitly wants to share details / be contacted.
+      if (wantsLeadCapture(textToSend)) {
+        if (leadStage === 'done') {
+          replyLocally(
+            `You're all set — our team has your details and will reach out. You can also email ${SUPPORT_EMAIL} anytime.`
+          );
+        } else {
+          setLeadStage('name');
+          replyLocally("Wonderful — I'd love to connect you with our SRE team. What's your name?");
+        }
+        return;
+      }
 
       // 1. Instant local answer for the common questions.
       const localAnswer = findLocalAnswer(textToSend);
