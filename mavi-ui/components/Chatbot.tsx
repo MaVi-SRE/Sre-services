@@ -343,16 +343,12 @@ export const Chatbot: React.FC = () => {
       // Remember the visitor's first real question to store alongside the lead.
       if (!leadRef.current.message) leadRef.current.message = textToSend.slice(0, 2000);
 
-      // 0. Visitor explicitly wants to share details / be contacted.
+      // 0. Visitor explicitly wants to share details / be contacted. Honor it
+      // even if they've captured before — an explicit ask should always work.
       if (wantsLeadCapture(textToSend)) {
-        if (leadStage === 'done') {
-          replyLocally(
-            `You're all set — our team has your details and will reach out. You can also email ${SUPPORT_EMAIL} anytime.`
-          );
-        } else {
-          setLeadStage('name');
-          replyLocally("Wonderful — I'd love to connect you with our SRE team. What's your name?");
-        }
+        leadRef.current = { name: '', email: '', company: '', message: leadRef.current.message };
+        setLeadStage('name');
+        replyLocally("Wonderful — I'd love to connect you with our SRE team. What's your name?");
         return;
       }
 
