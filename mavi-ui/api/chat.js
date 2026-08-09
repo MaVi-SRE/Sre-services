@@ -83,7 +83,7 @@ export default async function handler(req, res) {
     const body = {
       reply: `I apologize, I am experiencing a temporary issue. Please contact us at ${SUPPORT_EMAIL}.`,
     };
-    if (process.env.DEBUG_CHAT === '1' || req.headers['x-mavi-debug'] === 'mavi2026') {
+    if (process.env.DEBUG_CHAT === '1') {
       body.debug = { model: GEMINI_MODEL, message: error?.message || String(error) };
     }
     res.status(500).json(body);
