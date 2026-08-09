@@ -7,8 +7,9 @@ type Message = {
   isError?: boolean;
 };
 
-// Lead capture kicks in once the visitor is engaged (has sent this many turns).
-const LEAD_TRIGGER_AFTER_TURNS = 2;
+// Lead capture kicks in as soon as the visitor asks a question: after the
+// first message the bot answers, then asks for their details.
+const LEAD_TRIGGER_AFTER_TURNS = 1;
 const LEAD_STORAGE_KEY = 'mavi_lead_captured';
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const SKIP_RE = /^(skip|no thanks|no|later|not now|maybe later)$/i;
