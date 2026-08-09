@@ -7,9 +7,6 @@ type Message = {
   isError?: boolean;
 };
 
-// Lead capture kicks in as soon as the visitor asks a question: after the
-// first message the bot answers, then asks for their details.
-const LEAD_TRIGGER_AFTER_TURNS = 1;
 const LEAD_STORAGE_KEY = 'mavi_lead_captured';
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const SKIP_RE = /^(skip|no thanks|no|later|not now|maybe later)$/i;
@@ -180,9 +177,10 @@ export const Chatbot: React.FC = () => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const timeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const abortRef = useRef<AbortController | null>(null);
-  const userTurnsRef = useRef(0);
   // The first substantive question the visitor asked — stored with the lead.
   const leadRef = useRef({ name: '', email: '', company: '', message: '' });
+  // A question asked before capture; answered once details are collected.
+  const pendingQuestionRef = useRef('');
   // Latest messages, readable inside callbacks without re-creating them.
   const messagesRef = useRef(messages);
   messagesRef.current = messages;
@@ -231,18 +229,64 @@ export const Chatbot: React.FC = () => {
     [pushBotMessage]
   );
 
-  // Begin the name → email → company capture, after the answer has landed.
-  const maybeStartLeadCapture = useCallback(
-    (delay: number) => {
-      if (leadStage !== 'idle') return;
-      if (userTurnsRef.current < LEAD_TRIGGER_AFTER_TURNS) return;
-      setLeadStage('name');
-      replyLocally(
-        "By the way — so our SRE team can follow up with the right details, may I grab your name? (or type ‘skip’)",
-        delay
-      );
+  // Answer a question from built-in knowledge, falling back to /api/chat.
+  const answerQuestion = useCallback(
+    async (text: string) => {
+      setIsTyping(true);
+
+      const localAnswer = findLocalAnswer(text);
+      if (localAnswer) {
+        replyLocally(localAnswer);
+        return;
+      }
+
+      const controller = new AbortController();
+      abortRef.current = controller;
+      const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+      timeoutsRef.current.push(timeoutId);
+
+      const history = messagesRef.current.slice(-8).map((m) => ({ role: m.role, text: m.text }));
+
+      try {
+        const response = await fetch(apiUrl('/api/chat'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: text, history }),
+          signal: controller.signal,
+        });
+
+        const data = await response.json().catch(() => null);
+
+        if (!response.ok) {
+          if (response.status === 429) {
+            pushBotMessage(
+              "You're sending messages a bit quickly. Please wait a moment and try again.",
+              true
+            );
+            return;
+          }
+          throw new Error(`Request failed with status ${response.status}`);
+        }
+
+        if (!data?.reply) throw new Error('Empty response from server');
+
+        pushBotMessage(data.reply);
+      } catch (error) {
+        const aborted = error instanceof DOMException && error.name === 'AbortError';
+        console.error('Chat request failed:', error);
+        setLastFailedMessage(text);
+        pushBotMessage(
+          aborted
+            ? `That took longer than expected. Tap retry, or reach us at ${SUPPORT_EMAIL}.`
+            : `I couldn't reach the reliability engine just now. Tap retry, or reach us at ${SUPPORT_EMAIL}.`,
+          true
+        );
+      } finally {
+        clearTimeout(timeoutId);
+        if (abortRef.current === controller) abortRef.current = null;
+      }
     },
-    [leadStage, replyLocally]
+    [pushBotMessage, replyLocally]
   );
 
   const finishCapture = useCallback((persist: boolean) => {
@@ -270,20 +314,35 @@ export const Chatbot: React.FC = () => {
       if (!response.ok) throw new Error(`Save failed with status ${response.status}`);
 
       const firstName = leadRef.current.name.split(' ')[0];
+      const company = leadRef.current.company;
       finishCapture(true);
-      pushBotMessage(
-        `Thanks, ${firstName}! I've shared your details with our team — we'll reach out to ${leadRef.current.company || 'you'} shortly. Meanwhile, ask me anything about SRE, cloud, or reliability.`
-      );
+
+      // If they asked something before capture, answer it now.
+      const pending = pendingQuestionRef.current;
+      pendingQuestionRef.current = '';
+      if (pending) {
+        pushBotMessage(
+          `Thanks, ${firstName}! Our team will reach out to ${company || 'you'} shortly. Now, about your question:`
+        );
+        answerQuestion(pending);
+      } else {
+        pushBotMessage(
+          `Thanks, ${firstName}! I've shared your details with our team — we'll reach out to ${company || 'you'} shortly. Ask me anything about SRE, cloud, or reliability.`
+        );
+      }
     } catch (error) {
       console.error('Lead save failed:', error);
-      // Don't trap the visitor in the flow if saving fails.
+      // Don't trap the visitor in the flow if saving fails — still answer them.
       finishCapture(false);
+      const pending = pendingQuestionRef.current;
+      pendingQuestionRef.current = '';
       pushBotMessage(
-        `Thanks! I couldn't log that just now, but you can reach us directly at ${SUPPORT_EMAIL}. Feel free to keep asking questions.`,
+        `Thanks! I couldn't log that just now, but you can reach us directly at ${SUPPORT_EMAIL}.`,
         true
       );
+      if (pending) answerQuestion(pending);
     }
-  }, [finishCapture, pushBotMessage]);
+  }, [finishCapture, pushBotMessage, answerQuestion]);
 
   // Route a message to the active capture step instead of the chat backend.
   const handleLeadAnswer = useCallback(
@@ -292,9 +351,13 @@ export const Chatbot: React.FC = () => {
 
       if (SKIP_RE.test(text)) {
         finishCapture(false);
-        replyLocally(
-          `No problem — ask me anything, or reach us anytime at ${SUPPORT_EMAIL}.`
-        );
+        const pending = pendingQuestionRef.current;
+        pendingQuestionRef.current = '';
+        if (pending) {
+          answerQuestion(pending);
+        } else {
+          replyLocally(`No problem — ask me anything, or reach us anytime at ${SUPPORT_EMAIL}.`);
+        }
         return;
       }
 
@@ -321,7 +384,7 @@ export const Chatbot: React.FC = () => {
         submitLead();
       }
     },
-    [leadStage, finishCapture, replyLocally, submitLead]
+    [leadStage, finishCapture, replyLocally, submitLead, answerQuestion]
   );
 
   const handleSend = useCallback(
@@ -340,82 +403,33 @@ export const Chatbot: React.FC = () => {
         return;
       }
 
-      userTurnsRef.current += 1;
       // Remember the visitor's first real question to store alongside the lead.
       if (!leadRef.current.message) leadRef.current.message = textToSend.slice(0, 2000);
 
-      // 0. Visitor explicitly wants to share details / be contacted. Honor it
-      // even if they've captured before — an explicit ask should always work.
+      // Explicit "share my details" intent → (re)start capture, no pending Q.
       if (wantsLeadCapture(textToSend)) {
+        pendingQuestionRef.current = '';
         leadRef.current = { name: '', email: '', company: '', message: leadRef.current.message };
         setLeadStage('name');
         replyLocally("Wonderful — I'd love to connect you with our SRE team. What's your name?");
         return;
       }
 
-      // 1. Instant local answer for the common questions.
-      const localAnswer = findLocalAnswer(textToSend);
-      if (localAnswer) {
-        replyLocally(localAnswer);
-        // Ask for details after the answer has been shown.
-        maybeStartLeadCapture(1600);
+      // Not captured yet → collect details BEFORE answering. Remember the
+      // question so we can answer it once we have their details.
+      if (leadStage === 'idle') {
+        pendingQuestionRef.current = textToSend;
+        setLeadStage('name');
+        replyLocally(
+          "I'd be glad to help with that! First, so our SRE team can follow up — may I grab your name? (or type ‘skip’)"
+        );
         return;
       }
 
-      // 2. Everything else goes to the AI backend.
-      const controller = new AbortController();
-      abortRef.current = controller;
-      const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-      timeoutsRef.current.push(timeoutId);
-
-      // Send recent turns so the assistant has conversational context.
-      const history = messages.slice(-8).map((m) => ({
-        role: m.role,
-        text: m.text,
-      }));
-
-      try {
-        const response = await fetch(apiUrl('/api/chat'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: textToSend, history }),
-          signal: controller.signal,
-        });
-
-        const data = await response.json().catch(() => null);
-
-        if (!response.ok) {
-          if (response.status === 429) {
-            pushBotMessage(
-              "You're sending messages a bit quickly. Please wait a moment and try again.",
-              true
-            );
-            return;
-          }
-          throw new Error(`Request failed with status ${response.status}`);
-        }
-
-        if (!data?.reply) throw new Error('Empty response from server');
-
-        pushBotMessage(data.reply);
-        // Ask for details after the answer has been shown.
-        maybeStartLeadCapture(900);
-      } catch (error) {
-        const aborted = error instanceof DOMException && error.name === 'AbortError';
-        console.error('Chat request failed:', error);
-        setLastFailedMessage(textToSend);
-        pushBotMessage(
-          aborted
-            ? `That took longer than expected. Tap retry, or reach us at ${SUPPORT_EMAIL}.`
-            : `I couldn't reach the reliability engine just now. Tap retry, or reach us at ${SUPPORT_EMAIL}.`,
-          true
-        );
-      } finally {
-        clearTimeout(timeoutId);
-        if (abortRef.current === controller) abortRef.current = null;
-      }
+      // Already captured (or skipped) → answer normally.
+      await answerQuestion(textToSend);
     },
-    [input, isTyping, messages, leadStage, handleLeadAnswer, maybeStartLeadCapture, pushBotMessage, replyLocally]
+    [input, isTyping, leadStage, handleLeadAnswer, answerQuestion, replyLocally]
   );
 
   const handleRetry = useCallback(() => {
