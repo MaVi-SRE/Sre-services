@@ -93,7 +93,7 @@ export default async function handler(req, res) {
       `,
     });
     if (result?.skipped) {
-      console.warn('⚠️  Lead email skipped — Mailgun not configured (MAILGUN_API_KEY/DOMAIN).');
+      console.warn('⚠️  Lead email skipped —', result.reason || 'no email provider configured');
     } else {
       console.log('✅ Lead notification emailed to:', notifyRecipients().join(', '));
     }
