@@ -123,21 +123,61 @@ export function validateServiceRequest(body) {
   return errors;
 }
 
-// ---- Best-effort Mailgun sender (no-op if not configured) ----
-let mgClient = null;
+// ---- Best-effort email sender ----
+// Prefers Twilio SendGrid (SENDGRID_API_KEY), falls back to Mailgun, and
+// no-ops if neither is configured. Payload: { to, replyTo, subject, html }.
+// `to` may be a string or an array of addresses.
 export async function sendMail(payload) {
-  if (!process.env.MAILGUN_API_KEY || !process.env.MAILGUN_DOMAIN) {
-    return { skipped: true };
+  if (process.env.SENDGRID_API_KEY) {
+    return sendViaSendGrid(payload);
   }
+  if (process.env.MAILGUN_API_KEY && process.env.MAILGUN_DOMAIN) {
+    return sendViaMailgun(payload);
+  }
+  return { skipped: true, reason: 'no email provider configured (SENDGRID_API_KEY or MAILGUN_*)' };
+}
+
+const toRecipientArray = (to) => (Array.isArray(to) ? to : [to]).filter(Boolean);
+
+// Twilio SendGrid via the REST API (no SDK needed on the serverless runtime).
+async function sendViaSendGrid({ to, replyTo, subject, html }) {
+  const from = process.env.SENDGRID_FROM || process.env.FROM_EMAIL;
+  if (!from) {
+    return { skipped: true, reason: 'SENDGRID_FROM (a SendGrid-verified sender) is not set' };
+  }
+
+  const res = await fetch('https://api.sendgrid.com/v3/mail/send', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${process.env.SENDGRID_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      personalizations: [{ to: toRecipientArray(to).map((email) => ({ email })) }],
+      from: { email: from, name: `${BRAND} Assistant` },
+      ...(replyTo ? { reply_to: { email: replyTo } } : {}),
+      subject,
+      content: [{ type: 'text/html', value: html }],
+    }),
+    signal: AbortSignal.timeout(10_000),
+  });
+
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(`SendGrid ${res.status}: ${detail.slice(0, 300)}`);
+  }
+  return { ok: true, provider: 'sendgrid' };
+}
+
+let mgClient = null;
+async function sendViaMailgun(payload) {
   if (!mgClient) {
     const [{ default: Mailgun }, { default: formData }] = await Promise.all([
       import('mailgun.js'),
       import('form-data'),
     ]);
-    mgClient = new Mailgun(formData).client({
-      username: 'api',
-      key: process.env.MAILGUN_API_KEY,
-    });
+    mgClient = new Mailgun(formData).client({ username: 'api', key: process.env.MAILGUN_API_KEY });
   }
-  return mgClient.messages.create(process.env.MAILGUN_DOMAIN, payload);
+  const from = payload.from || `${BRAND} <postmaster@${process.env.MAILGUN_DOMAIN}>`;
+  return mgClient.messages.create(process.env.MAILGUN_DOMAIN, { ...payload, from });
 }
